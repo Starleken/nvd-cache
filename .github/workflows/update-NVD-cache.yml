@@ -1,0 +1,44 @@
+name: Update NVD cache
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: 25
+          distribution: graalvm
+
+      - name: Download NVD data
+        run: mvn org.owasp:dependency-check-maven:12.1.9:update-only
+
+      - name: Pack cache
+        run: |
+          cd ~/.m2/repository/org/owasp
+          tar czf "$RUNNER_TEMP/dependency-check-data-12.1.9.tar.gz" dependency-check-data
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="nvd-cache-12.1.9"
+          gh release view "$TAG" --repo "${{ github.repository }}" 2>/dev/null \
+            || gh release create "$TAG" --repo "${{ github.repository }}" \
+                 --title "NVD cache OWASP 12.1.9" \
+                 --notes "Auto-updated NVD database"
+
+          gh release upload "$TAG" \
+            "$RUNNER_TEMP/dependency-check-data-12.1.9.tar.gz" \
+            --repo "${{ github.repository }}" \
+            --clobber

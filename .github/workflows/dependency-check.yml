@@ -1,0 +1,50 @@
+name: Dependency Check
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: 25
+          distribution: graalvm
+
+      - name: Configure Maven
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<EOF
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${GITHUB_ACTOR}</username>
+                <password>${GITHUB_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      - name: Restore shared NVD cache
+        run: |
+          mkdir -p ~/.m2/repository/org/owasp
+          curl -fsSL -o "$RUNNER_TEMP/dependency-check-data-12.1.9.tar.gz" \
+            "https://github.com/AGAParts-US/nvd-cache/releases/download/nvd-cache-12.1.9/dependency-check-data-12.1.9.tar.gz"
+          tar xzf "$RUNNER_TEMP/dependency-check-data-12.1.9.tar.gz" \
+            -C ~/.m2/repository/org/owasp
+
+      - name: Run Dependency Check
+        run: |
+          mvn -DnvdValidForHours=168 \
+              -DautoUpdate=false \
+              org.owasp:dependency-check-maven:12.1.9:check
